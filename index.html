@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="es-MX">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#68152a">
+<title>ETA15 · Cámara</title>
+<style>
+:root{--wine:#68152a;--ok:#188038;--warn:#c98700;--bad:#b3261e;--bg:#0b1017;--panel:#151b24;--text:#f7f7f8;--muted:#b9c1cc;--line:#ffffff1e}
+*{box-sizing:border-box}html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:Arial,Helvetica,sans-serif}body{display:flex;flex-direction:column;overflow:hidden}
+header{min-height:58px;padding:10px 12px;background:var(--wine);display:flex;align-items:center;justify-content:space-between;gap:10px}.brand{font-weight:900;font-size:17px}.meta{font-size:11px;opacity:.9;margin-top:2px}.close{min-height:40px;padding:8px 12px;border:1px solid #ffffff55;background:#ffffff12;color:#fff;border-radius:10px;font-weight:900}
+main{flex:1;min-height:0;display:flex;flex-direction:column}.stage{position:relative;flex:1;min-height:0;background:#000;overflow:hidden}.reader{position:absolute;inset:0}.reader video{width:100%!important;height:100%!important;object-fit:cover!important}.reader img{display:none!important}.reader #qr-shaded-region{border-color:#71e39a!important}
+.guide{pointer-events:none;position:absolute;inset:0;display:grid;place-items:center;z-index:4}.frame{position:relative;width:min(92vw,720px);height:min(28vh,180px);border:2px solid #fff;border-radius:18px;box-shadow:0 0 0 9999px #0006}.line{position:absolute;left:7%;right:7%;height:2px;background:#71e39a;top:50%;animation:scan 1.5s ease-in-out infinite;box-shadow:0 0 10px #71e39a}@keyframes scan{0%,100%{transform:translateY(-58px)}50%{transform:translateY(58px)}}
+.overlay{display:none;position:absolute;inset:0;z-index:12;background:#101722ed;padding:20px;align-items:center;justify-content:center;text-align:center}.overlay.show{display:flex}.overlay-card{max-width:520px;width:100%}.overlay h2{margin:0 0 8px;font-size:22px}.overlay p{color:#d1d7df;line-height:1.5;margin:8px 0 14px}.overlay button{min-height:48px;border:0;border-radius:11px;padding:11px 18px;background:var(--wine);color:white;font-weight:900;font-size:15px}.overlay .secondary{background:#29313d;margin-top:8px}.diag{font-size:11px;color:#aeb6c2;margin-top:12px;line-height:1.45;word-break:break-word}
+.status{padding:10px 12px;background:var(--panel);border-top:1px solid var(--line)}.status-row{display:flex;align-items:center;gap:8px;font-weight:900;font-size:13px}.dot{width:10px;height:10px;border-radius:50%;background:#7b8490}.status.scanning .dot,.status.ok .dot{background:#71e39a;box-shadow:0 0 0 5px #71e39a20}.status.processing .dot{background:#f6b73c}.status.bad .dot{background:#ff7b72}.feedback{margin-top:7px;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:#ffffff08;font-size:13px;line-height:1.35}.feedback strong{display:block;font-size:15px;margin-bottom:2px}.feedback.ok{background:#173b24;border-color:#2b7044}.feedback.warn{background:#3b3117;border-color:#786126}.feedback.bad{background:#411b1a;border-color:#8b3934}.tools{display:flex;gap:8px;margin-top:8px}.tools button{flex:1;min-height:42px;border:1px solid #ffffff30;background:#ffffff0e;color:#fff;border-radius:10px;font-weight:800}.tools button.primary{background:var(--wine);border-color:var(--wine)}
+.file-fallback{position:absolute;left:-9999px;opacity:0;width:1px;height:1px}.mini{font-size:11px;color:var(--muted);margin-top:7px;line-height:1.35}
+@media(min-width:900px){body{max-width:920px;margin:auto;border-left:1px solid #222;border-right:1px solid #222}.stage{min-height:520px}}
+</style>
+</head>
+<body>
+<header><div><div class="brand" id="school">ETA15 · Cámara</div><div class="meta" id="meta">Preparando…</div></div><button class="close" onclick="closeScanner()">Cerrar</button></header>
+<main>
+  <div class="stage">
+    <div id="reader" class="reader"></div>
+    <div class="guide"><div class="frame"><div class="line"></div></div></div>
+    <div id="overlay" class="overlay"><div class="overlay-card"><h2 id="overlayTitle">Permitir cámara</h2><p id="overlayText">Pulse iniciar y permita el uso de la cámara.</p><button id="retryBtn" onclick="startScanner(true)">Iniciar cámara</button><button class="secondary" onclick="openPhotoFallback()">Tomar foto del código</button><div id="diag" class="diag"></div></div></div>
+  </div>
+  <div id="status" class="status"><div class="status-row"><span class="dot"></span><span id="statusText">Preparando cámara…</span></div><div id="feedback" class="feedback">Apunte al código de barras de la credencial.</div><div class="tools"><button onclick="switchCamera()" id="switchBtn">↺ Cambiar cámara</button><button class="primary" onclick="resumeScanner()">Continuar</button></div><div class="mini">Si la cámara en vivo no puede abrirse, use “Tomar foto del código” como respaldo.</div></div>
+</main>
+<input class="file-fallback" id="photoInput" type="file" accept="image/*" capture="environment" onchange="scanPhoto(this.files&&this.files[0])">
+<script>
+const VERSION='13.0';
+const P=new URLSearchParams(location.search),channel=P.get('channel')||'',school=P.get('school')||'ETA15',date=P.get('date')||'',scope=P.get('scope')||'';
+document.getElementById('school').textContent=school+' · Cámara';document.getElementById('meta').textContent=[date,scope].filter(Boolean).join(' · ');
+let scanner=null,cameras=[],cameraIndex=0,busy=false,lastCode='',lastAt=0,started=false,readyAck=false,resultTimer=null,libraryPromise=null;
+function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function diagnostics(){return{version:VERSION,topLevel:window.top===window.self,secureContext:window.isSecureContext,mediaDevices:!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia),opener:!!(window.opener&&!window.opener.closed),ua:navigator.userAgent}}
+function send(type,extra){try{if(window.opener&&!window.opener.closed)window.opener.postMessage(Object.assign({type,channel},extra||{}),'*')}catch(e){}}
+function announceReady(){send('ETA15_CAMERA_BRIDGE_READY',diagnostics());if(!readyAck)setTimeout(announceReady,900)}
+function setStatus(kind,text,title,detail){const box=document.getElementById('status'),fb=document.getElementById('feedback');box.className='status '+(kind||'');document.getElementById('statusText').textContent=text||'';if(title){fb.className='feedback '+(kind==='ok'?'ok':kind==='bad'?'bad':'warn');fb.innerHTML='<strong>'+esc(title)+'</strong>'+esc(detail||'')}else{fb.className='feedback';fb.textContent=detail||'Apunte al código de barras dentro del recuadro.'}}
+function showOverlay(title,text,buttonText){document.getElementById('overlayTitle').textContent=title;document.getElementById('overlayText').textContent=text;document.getElementById('retryBtn').textContent=buttonText||'Iniciar cámara';document.getElementById('diag').textContent=JSON.stringify(diagnostics());document.getElementById('overlay').classList.add('show')}
+function hideOverlay(){document.getElementById('overlay').classList.remove('show')}
+function fatalEnvironment(){if(window.top!==window.self){showOverlay('Abra esta página directamente','La cámara está dentro de un iframe. Google Sites y otros contenedores pueden bloquear el permiso. Publique este archivo como página HTTPS independiente y ábralo directamente.','Reintentar');return true}if(!window.isSecureContext){showOverlay('Se requiere HTTPS','La cámara solo puede usarse desde una página HTTPS segura.','Reintentar');return true}if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){showOverlay('Navegador sin acceso a cámara','Use una versión actual de Chrome, Edge, Firefox o Safari.','Reintentar');return true}return false}
+
+function ensureScannerLibrary(){
+  if(window.Html5Qrcode)return Promise.resolve();if(libraryPromise)return libraryPromise;
+  const urls=['https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js','https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'];
+  libraryPromise=new Promise((resolve,reject)=>{let i=0;const next=()=>{if(window.Html5Qrcode){resolve();return}if(i>=urls.length){reject(new Error('No se pudo cargar el lector de códigos desde Internet.'));return}const sc=document.createElement('script');sc.src=urls[i++];sc.async=true;sc.onload=()=>window.Html5Qrcode?resolve():next();sc.onerror=next;document.head.appendChild(sc)};next()});
+  return libraryPromise;
+}
+function cameraError(e){const n=String(e&&e.name||''),m=String(e&&e.message||e||'');if(n==='NotAllowedError'||/permission|denied|notallowed/i.test(m))return'El permiso de cámara fue rechazado o está bloqueado. Abra los permisos del sitio, permita Cámara y vuelva a intentar.';if(n==='NotFoundError'||/notfound|no camera|devices/i.test(m))return'No se encontró una cámara disponible.';if(n==='NotReadableError'||/notreadable|trackstart/i.test(m))return'La cámara está ocupada por otra aplicación. Cierre otras apps que usen la cámara e intente de nuevo.';if(n==='OverconstrainedError')return'La cámara no acepta la configuración solicitada. Intente cambiar de cámara.';return'No fue posible iniciar la cámara: '+m}
+async function stopScanner(){clearTimeout(resultTimer);if(scanner&&started){try{await scanner.stop()}catch(e){}try{scanner.clear()}catch(e){}}scanner=null;started=false}
+async function requestPermission(){const stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}}});stream.getTracks().forEach(t=>t.stop())}
+function preferredCameraIndex(list){let i=list.findIndex(c=>/back|rear|environment|trasera|posterior/i.test(c.label||''));return i>=0?i:0}
+function formats(){try{const F=Html5QrcodeSupportedFormats;return[F.CODE_128,F.CODE_39,F.CODE_93,F.CODABAR,F.ITF,F.EAN_13,F.EAN_8,F.UPC_A,F.UPC_E].filter(v=>v!==undefined)}catch(e){return[]}}
+async function startScanner(fromButton){hideOverlay();await stopScanner();if(fatalEnvironment())return;try{await ensureScannerLibrary();setStatus('','Solicitando cámara…','PERMISO DE CÁMARA','La primera vez el navegador mostrará un permiso. Pulse Permitir.');await requestPermission();cameras=await Html5Qrcode.getCameras();if(!cameras.length)throw new Error('No se encontró una cámara disponible.');if(cameraIndex>=cameras.length)cameraIndex=preferredCameraIndex(cameras);else if(cameraIndex===0)cameraIndex=preferredCameraIndex(cameras);scanner=new Html5Qrcode('reader',formats().length?{formatsToSupport:formats(),verbose:false}:{verbose:false});const cfg={fps:12,qrbox:(w,h)=>({width:Math.max(230,Math.min(Math.floor(w*.9),700)),height:Math.max(100,Math.min(Math.floor(h*.28),180))}),aspectRatio:1.777778,disableFlip:true};await scanner.start(cameras[cameraIndex].id,cfg,onScan,()=>{});started=true;busy=false;document.getElementById('switchBtn').style.display=cameras.length>1?'':'none';setStatus('scanning','Buscando código…','','Apunte al código de barras. Se registrará automáticamente.');send('ETA15_CAMERA_READY',{camera:cameras[cameraIndex].label||'Cámara',...diagnostics()})}catch(e){const msg=cameraError(e);setStatus('bad','Cámara no disponible','NO SE PUDO ABRIR',msg);showOverlay('No se pudo abrir la cámara',msg,'Intentar nuevamente');send('ETA15_CAMERA_ERROR',{message:msg,...diagnostics()})}}
+function onScan(decoded){const code=String(decoded||'').replace(/[\r\n\t ]+/g,'').trim(),now=Date.now();if(!code||busy)return;if(code===lastCode&&now-lastAt<2500)return;lastCode=code;lastAt=now;busy=true;setStatus('processing','Código detectado · registrando…','CÓDIGO DETECTADO',code);send('ETA15_CAMERA_SCAN',{code});resultTimer=setTimeout(()=>{busy=false;setStatus('scanning','Sin respuesta · continúe','','Puede apuntar la siguiente credencial.')},5000)}
+function resumeScanner(){clearTimeout(resultTimer);busy=false;setStatus('scanning','Buscando código…','','Apunte la siguiente credencial.')}
+async function switchCamera(){if(cameras.length<2)return;cameraIndex=(cameraIndex+1)%cameras.length;setStatus('','Cambiando cámara…');await startScanner(true)}
+function openPhotoFallback(){document.getElementById('photoInput').click()}
+async function scanPhoto(file){if(!file)return;let temp=null;try{await ensureScannerLibrary();setStatus('processing','Analizando foto…','FOTO CAPTURADA','Buscando el código de barras.');temp=new Html5Qrcode('reader',formats().length?{formatsToSupport:formats(),verbose:false}:{verbose:false});const decoded=await temp.scanFile(file,true);onScan(decoded)}catch(e){setStatus('bad','No se detectó código','INTENTE DE NUEVO','Acerque más la credencial y procure buena iluminación.')}finally{try{temp&&temp.clear()}catch(e){}document.getElementById('photoInput').value=''}}
+async function closeScanner(){send('ETA15_CAMERA_CLOSED');await stopScanner();window.close()}
+window.addEventListener('message',e=>{const d=e.data||{};if(d.channel!==channel)return;if(d.type==='ETA15_CAMERA_ACK'){readyAck=true}else if(d.type==='ETA15_SCAN_RESULT'){clearTimeout(resultTimer);if(d.status==='REGISTRADO'){setStatus('ok','Entrada registrada','ENTRADA REGISTRADA',(d.name||'')+' · '+(d.group||'')+' · '+(d.time||''));navigator.vibrate&&navigator.vibrate(45)}else if(d.status==='DUPLICADO'){setStatus('','Ya estaba registrado','YA REGISTRADO',(d.name||'')+' · '+(d.group||''));navigator.vibrate&&navigator.vibrate([45,60,45])}else{setStatus('bad','No se registró','NO REGISTRADO',d.message||'Revise el código.');navigator.vibrate&&navigator.vibrate([90,50,90])}setTimeout(resumeScanner,700)}else if(d.type==='ETA15_CAMERA_CLOSE')closeScanner()});
+window.addEventListener('beforeunload',()=>send('ETA15_CAMERA_CLOSED'));
+announceReady();
+setTimeout(()=>{if(fatalEnvironment())return;startScanner(false)},120);
+</script>
+</body>
+</html>
